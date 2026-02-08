@@ -17,14 +17,14 @@ from typing import Dict, List, Optional, Any
 from io import BytesIO
 
 try:
-    from playwright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeout
+    from patchright.async_api import async_playwright, Page, Browser, TimeoutError as PlaywrightTimeout
     from openai import AsyncOpenAI
     from dotenv import load_dotenv
     from PIL import Image
 except ImportError:
     print("Error: Missing dependencies, run:")
-    print("pip install playwright openai python-dotenv Pillow")
-    print("playwright install chromium")
+    print("pip install patchright openai python-dotenv Pillow")
+    print("patchright install chromium")
     sys.exit(1)
 
 
@@ -78,29 +78,38 @@ class Browser4Zero:
         return js_path.read_text(encoding='utf-8')
     
     async def _launch_browser(self):
-        """Launches the browser"""
+        """Launches the browser with patchright stealth configuration"""
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=self.headless,
-            args=[
-                '--disable-blink-features=AutomationControlled',
-                '--no-first-run',
-                '--no-default-browser-check',
-            ]
-        )
-        
+
+        # launch args
+        launch_args = [
+            '--no-first-run',
+            '--no-default-browser-check',
+        ]
+
+        try:
+            # try to use Chrome, best stealth
+            self.browser = await self.playwright.chromium.launch(
+                headless=self.headless,
+                channel='chrome',
+                args=launch_args
+            )
+        except Exception:
+            # Fallback to chromium if not available
+            print("   ℹ️ Chrome not found, using Chromium (install Chrome for better stealth)")
+            self.browser = await self.playwright.chromium.launch(
+                headless=self.headless,
+                args=launch_args
+            )
+
         context = await self.browser.new_context(
             viewport={'width': self.screenshot_width, 'height': 720},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.0'
         )
         context.set_default_timeout(self.action_timeout)
         context.set_default_navigation_timeout(self.navigation_timeout)
-        
+
         self.page = await context.new_page()
-        
-        await self.page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        """)
     
     async def _ensure_helper(self) -> bool:
         """Ensure the helper is there every loop"""

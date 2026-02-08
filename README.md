@@ -10,7 +10,7 @@
 
 ## 原理
 
-整个项目大概就是个底层引擎加一个注入页面的 JS 辅助脚本。
+整个项目大概就是个底层引擎加一个注入页面的 JS 辅助脚本，以及一点点反检测工作。
 
 1. JS 脚本扫描页面上所有可交互的元素（按钮、链接、输入框等），给每个元素生成稳定的 CSS 选择器，编成一个带编号的列表。
 2. 这个列表连同页面文本一起发给 LLM。
@@ -24,9 +24,11 @@
 
 ## 如何使用？
 
+管理员权限跑：
+
 ```bash
-pip install playwright openai python-dotenv Pillow
-playwright install chromium
+pip install patchright openai python-dotenv Pillow
+patchright install chrome
 ```
 
 把 `.env.example` 复制成 `.env`，填上你的 API key。
@@ -35,6 +37,8 @@ playwright install chromium
 ```bash
 cp .env.example .env
 ```
+
+> **关于 Patchright**:我们用了 Patchright 替代原生 Playwright，提高反检测能力。
 
 
 ## 用法
@@ -67,7 +71,7 @@ python agent.py "搜索最新的 Claude 版本是啥" --url https://google.com
 | `VISION_ENABLED` | 开启视觉模式（截图发给 LLM），默认 `false` |
 | `MAX_STEPS` | 最大步数 |
 
-建议保持 `BROWSER_HEADLESS=false`，这样能看到它在做什么。无头模式在某些网站上也更容易触发反爬。
+建议保持 `BROWSER_HEADLESS=false`，这样能看到它在做什么。Patchright 的无头模式比普通 Playwright 更难被检测，但还是建议在有头模式下运行来获得最好的反检测效果。
 
 ## 能干什么
 
