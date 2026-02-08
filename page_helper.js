@@ -5,6 +5,68 @@
 (function() {
     'use strict';
 
+    // 劫持所有打开新标签页的方式
+    function preventNewTabs() {
+        try {
+            // 1. 劫持 window.open
+            const originalOpen = window.open;
+            window.open = function(url, target, features) {
+                if (url) {
+                    window.location.href = url;
+                }
+                return window;
+            };
+            
+            // 2. 移除所有 target 属性
+            function removeTargets(root) {
+                if (!root.querySelectorAll) return;
+                root.querySelectorAll('a[target], form[target], area[target]').forEach(el => {
+                    const t = el.getAttribute('target');
+                    if (t && !['_self', '_top'].includes(t)) {
+                        el.removeAttribute('target');
+                        el.setAttribute('data-original-target', t);
+                    }
+                });
+                // 移除 base target
+                const base = root.querySelector && root.querySelector('base[target]');
+                if (base) base.removeAttribute('target');
+            }
+            
+            // 3. 处理当前页面
+            removeTargets(document);
+            
+            // 4. 监听点击事件
+            document.addEventListener('click', (e) => {
+                const el = e.target.closest('a[target]');
+                if (el) {
+                    const t = el.getAttribute('target');
+                    if (t && !['_self', '_top'].includes(t)) {
+                        e.preventDefault();
+                        const href = el.getAttribute('href');
+                        if (href && href !== '#' && !href.startsWith('javascript:')) {
+                            window.location.href = href;
+                        }
+                    }
+                }
+            }, true);
+            
+            // 5. 监听新元素
+            const observer = new MutationObserver(mutations => {
+                mutations.forEach(m => {
+                    m.addedNodes.forEach(n => {
+                        if (n.nodeType === Node.ELEMENT_NODE) {
+                            removeTargets(n);
+                            if (n.tagName === 'BASE' && n.target) n.removeAttribute('target');
+                        }
+                    });
+                });
+            });
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+            
+        } catch (e) {}
+    }
+    preventNewTabs();
+
     // 为 iframe 注入反检测辅助
     function injectStealthToIframes() {
         const script = `

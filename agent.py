@@ -116,6 +116,16 @@ class Browser4Zero:
         context.set_default_navigation_timeout(self.navigation_timeout)
 
         self.page = await context.new_page()
+        
+        # 监听新页面打开，自动切换到新标签页
+        context.on('page', self._on_new_page)
+    
+    async def _on_new_page(self, page):
+        """当有新标签页打开时，自动切换到新页面"""
+        print(f"   🆕 新标签页打开，自动切换")
+        self.page = page
+        await page.wait_for_load_state('domcontentloaded')
+        await asyncio.sleep(0.5)
     
     async def _ensure_helper(self) -> bool:
         """Ensure the helper is there every loop"""
@@ -130,6 +140,107 @@ class Browser4Zero:
         for attempt in range(3):
             try:
                 await self.page.evaluate(self.helper_js)
+                
+                # 劫持所有可能打开新标签页的方式，强制在当前页打开
+                await self.page.evaluate('''
+                    (() => {
+                        // 1. 劫持 window.open，强制在当前窗口打开
+                        const originalOpen = window.open;
+                        window.open = function(url, target, features) {
+                            if (url) {
+                                window.location.href = url;
+                            }
+                            return window;
+                        };
+                        
+                        // 2. 劫持所有带 target 的链接，改为在当前页打开
+                        function fixTargetElements(root) {
+                            // 处理链接
+                            root.querySelectorAll && root.querySelectorAll('a[target]').forEach(el => {
+                                const original = el.getAttribute('target');
+                                if (original && !['_self', '_top'].includes(original)) {
+                                    el.removeAttribute('target');
+                                    el.setAttribute('data-original-target', original);
+                                }
+                            });
+                            
+                            // 处理表单
+                            root.querySelectorAll && root.querySelectorAll('form[target]').forEach(el => {
+                                const original = el.getAttribute('target');
+                                if (original && !['_self', '_top'].includes(original)) {
+                                    el.removeAttribute('target');
+                                    el.setAttribute('data-original-target', original);
+                                }
+                            });
+                            
+                            // 处理 base 标签的 target
+                            const base = document.querySelector('base[target]');
+                            if (base) {
+                                base.removeAttribute('target');
+                            }
+                        }
+                        
+                        // 3. 监听点击事件，拦截新窗口打开
+                        document.addEventListener('click', (e) => {
+                            const el = e.target.closest('a[target]');
+                            if (el) {
+                                const target = el.getAttribute('target');
+                                if (target && !['_self', '_top'].includes(target)) {
+                                    e.preventDefault();
+                                    const href = el.getAttribute('href');
+                                    if (href) {
+                                        window.location.href = href;
+                                    }
+                                }
+                            }
+                        }, true);
+                        
+                        // 4. 劫持表单提交，防止新窗口
+                        document.addEventListener('submit', (e) => {
+                            const form = e.target;
+                            const target = form.getAttribute('target');
+                            if (target && !['_self', '_top'].includes(target)) {
+                                form.removeAttribute('target');
+                            }
+                        }, true);
+                        
+                        // 5. 处理当前页面已有的元素
+                        fixTargetElements(document);
+                        
+                        // 6. 监听新添加的元素
+                        const observer = new MutationObserver(mutations => {
+                            mutations.forEach(mutation => {
+                                mutation.addedNodes.forEach(node => {
+                                    if (node.nodeType === Node.ELEMENT_NODE) {
+                                        fixTargetElements(node);
+                                        if (node.tagName === 'BASE' && node.target) {
+                                            node.removeAttribute('target');
+                                        }
+                                    }
+                                });
+                            });
+                        });
+                        observer.observe(document.documentElement, { childList: true, subtree: true });
+                        
+                        // 7. 劫持其他打开新窗口的方式
+                        // 防止使用 <area target="...">
+                        if (window.HTMLAreaElement) {
+                            const areaDesc = Object.getOwnPropertyDescriptor(HTMLAreaElement.prototype, 'target');
+                            if (areaDesc) {
+                                Object.defineProperty(HTMLAreaElement.prototype, 'target', {
+                                    get: areaDesc.get,
+                                    set: function(val) {
+                                        if (val && !['_self', '_top'].includes(val)) {
+                                            val = '_self';
+                                        }
+                                        return areaDesc.set.call(this, val);
+                                    }
+                                });
+                            }
+                        }
+                    })();
+                ''')
+                
                 exists = await self.page.evaluate('typeof window.__AGENT__ !== "undefined"')
                 if exists:
                     return True
