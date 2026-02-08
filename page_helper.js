@@ -1,9 +1,99 @@
 /**
- * Browser-Use Agent - Page Helper (修复版)
- * 专注于页面分析和元素标注，操作执行交给 Playwright
+ * Browser4Zero - Page Helper
+ * 专注于页面分析和元素标注，不包括操作执行
  */
 (function() {
     'use strict';
+
+    // 为 iframe 注入反检测辅助
+    function injectStealthToIframes() {
+        const script = `
+            (() => {
+                const _defineProperty = Object.defineProperty;
+                
+                // 1. webdriver
+                if (navigator.webdriver !== undefined) {
+                    _defineProperty(navigator, 'webdriver', { get: () => undefined });
+                }
+                
+                // 2. vendor & platform
+                _defineProperty(navigator, 'vendor', { get: () => 'Google Inc.' });
+                _defineProperty(navigator, 'platform', { get: () => 'Win64' });
+                
+                // 3. hardware specs (与主页面一致)
+                _defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                _defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+                
+                // 4. language settings (与主页面一致)
+                _defineProperty(navigator, 'language', { get: () => 'zh-CN' });
+                _defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+                
+                // 5. chrome 对象（与主页面一致）
+                _defineProperty(window, 'chrome', {
+                    get: () => ({
+                        app: { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } },
+                        runtime: { OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' }, OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' }, PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', MIPS64EL: 'mips64el', X86_32: 'x86-32', X86_64: 'x86-64' }, PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' }, RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' } }
+                    }),
+                    configurable: true
+                });
+
+                // 6. Canvas 指纹噪声（与主页面一致）
+                try {
+                    const _getImageData = CanvasRenderingContext2D.prototype.getImageData;
+                    CanvasRenderingContext2D.prototype.getImageData = function(...args) {
+                        const data = _getImageData.apply(this, args);
+                        for (let i = 0; i < data.data.length; i += 4) {
+                            data.data[i] = Math.max(0, Math.min(255, data.data[i] + (Math.random() > 0.5 ? 1 : -1)));
+                        }
+                        return data;
+                    };
+                } catch(e) {}
+
+                // 7. Permissions API 覆盖（与主页面一致）
+                try {
+                    const _query = Permissions.prototype.query;
+                    Permissions.prototype.query = function(args) {
+                        if (args.name === 'notifications') {
+                            return Promise.resolve({ state: 'prompt', onchange: null });
+                        }
+                        return _query.call(this, args);
+                    };
+                } catch(e) {}
+
+                // 8. WebGL 指纹噪声
+                try {
+                    const _getParameter = WebGLRenderingContext.prototype.getParameter;
+                    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+                        if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+                        return _getParameter.call(this, parameter);
+                    };
+                } catch(e) {}
+
+                // 9. WebGL2 指纹噪声
+                try {
+                    const _getParameter2 = WebGL2RenderingContext.prototype.getParameter;
+                    WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+                        if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+                        return _getParameter2.call(this, parameter);
+                    };
+                } catch(e) {}
+            })();
+        `;
+        try {
+            document.querySelectorAll('iframe').forEach(iframe => {
+                try {
+                    if (iframe.contentWindow && iframe.contentWindow.navigator) {
+                        iframe.contentWindow.eval(script);
+                    }
+                } catch(e) {}
+            });
+        } catch(e) {}
+    }
+    // 初始注入 + 定时检查新 iframe
+    injectStealthToIframes();
+    setInterval(injectStealthToIframes, 2000);
 
     // 防止重复注入
     if (window.__AGENT__) {
@@ -24,7 +114,7 @@
     ];
 
     /**
-     * 生成稳定的CSS选择器（优先使用稳定属性）
+     * 生成稳定的CSS选择器
      */
     function generateSelector(element) {
         // 优先：ID
