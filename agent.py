@@ -86,17 +86,6 @@ class Browser4Zero:
             '--no-first-run',
             '--no-default-browser-check',
             '--disable-blink-features=AutomationControlled',
-            '--disable-features=IsolateOrigins,site-per-process',
-            '--disable-site-isolation-trials',
-            '--disable-web-security',
-            '--disable-dev-shm-usage',
-            '--disable-setuid-sandbox',
-            '--disable-accelerated-2d-canvas',
-            '--window-size=1280,720',
-            '--mute-audio',
-            '--disable-background-timer-throttling',
-            '--disable-renderer-backgrounding',
-            '--disable-backgrounding-occluded-windows',
         ]
 
         try:
@@ -116,131 +105,15 @@ class Browser4Zero:
 
         context = await self.browser.new_context(
             viewport={'width': self.screenshot_width, 'height': 720},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36',
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.0',
             locale='zh-CN',
             timezone_id='Asia/Shanghai',
             permissions=['notifications'],
-            java_script_enabled=True,
-            bypass_csp=True,
-            ignore_https_errors=True,
             color_scheme='light',
             has_touch=False,
-            extra_http_headers={
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Sec-Ch-Ua': '"Chromium";v="144", "Google Chrome";v="144", "Not-A.Brand";v="99"',
-                'Sec-Ch-Ua-Mobile': '?0',
-                'Sec-Ch-Ua-Platform': '"Windows"',
-                'Upgrade-Insecure-Requests': '1',
-            }
         )
         context.set_default_timeout(self.action_timeout)
         context.set_default_navigation_timeout(self.navigation_timeout)
-
-        await context.add_init_script("""
-(() => {
-    const _defineProperty = Object.defineProperty;
-    const _getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
-
-    // 1. 隐藏 webdriver + 伪造 platform & navigator 属性
-    _defineProperty(navigator, 'webdriver', {
-        get: () => undefined,
-        configurable: true
-    });
-    _defineProperty(navigator, 'platform', {
-        get: () => 'Win64',
-        configurable: true
-    });
-    _defineProperty(navigator, 'vendor', {
-        get: () => 'Google Inc.',
-        configurable: true
-    });
-    _defineProperty(navigator, 'language', {
-        get: () => 'zh-CN',
-        configurable: true
-    });
-    _defineProperty(navigator, 'languages', {
-        get: () => ['zh-CN', 'zh', 'en'],
-        configurable: true
-    });
-    _defineProperty(navigator, 'hardwareConcurrency', {
-        get: () => 8,
-        configurable: true
-    });
-    _defineProperty(navigator, 'deviceMemory', {
-        get: () => 8,
-        configurable: true
-    });
-
-    // 2. 伪造 chrome 对象
-    if (!window.chrome) {
-        window.chrome = {};
-    }
-    _defineProperty(window, 'chrome', {
-        get: () => ({
-            app: { isInstalled: false, InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' }, RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' } },
-            runtime: { OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' }, OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' }, PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', MIPS64EL: 'mips64el', X86_32: 'x86-32', X86_64: 'x86-64' }, PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' }, RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' } }
-        }),
-        configurable: true
-    });
-
-    // 3. 覆盖 Permissions API
-    const _query = Permissions.prototype.query;
-    Permissions.prototype.query = function(args) {
-        if (args.name === 'notifications') {
-            return Promise.resolve({ state: 'prompt', onchange: null });
-        }
-        return _query.call(this, args);
-    };
-
-    // 4. 伪造 plugins 和 mimeTypes
-    const fakePlugins = [
-        { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format', version: 'undefined', item: () => null }
-    ];
-    const fakeMimeTypes = [
-        { type: 'application/pdf', suffixes: 'pdf', description: 'Portable Document Format', enabledPlugin: fakePlugins[0] },
-        { type: 'application/x-google-chrome-pdf', suffixes: 'pdf', description: 'Portable Document Format', enabledPlugin: fakePlugins[0] }
-    ];
-    _defineProperty(navigator, 'plugins', { get: () => fakePlugins });
-    _defineProperty(navigator, 'mimeTypes', { get: () => fakeMimeTypes });
-
-    // 5. Canvas 指纹噪声
-    const _getImageData = CanvasRenderingContext2D.prototype.getImageData;
-    CanvasRenderingContext2D.prototype.getImageData = function(...args) {
-        const data = _getImageData.apply(this, args);
-        for (let i = 0; i < data.data.length; i += 4) {
-            data.data[i] = Math.max(0, Math.min(255, data.data[i] + (Math.random() > 0.5 ? 1 : -1)));
-        }
-        return data;
-    };
-
-    // 6. WebGL 指纹噪声 (NVIDIA - 最常见的 Windows 独显)
-    const _getParameter = WebGLRenderingContext.prototype.getParameter;
-    WebGLRenderingContext.prototype.getParameter = function(parameter) {
-        if (parameter === 37445) return 'Google Inc. (NVIDIA)';
-        if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
-        return _getParameter.call(this, parameter);
-    };
-
-    // 7. WebGL2 指纹噪声（与 WebGL1 保持一致）
-    const _getParameter2 = WebGL2RenderingContext.prototype.getParameter;
-    WebGL2RenderingContext.prototype.getParameter = function(parameter) {
-        if (parameter === 37445) return 'Google Inc. (NVIDIA)';
-        if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce GTX 1060 Direct3D11 vs_5_0 ps_5_0, D3D11)';
-        return _getParameter2.call(this, parameter);
-    };
-
-    // 8. 覆盖 toString 防止检测
-    const _toString = Function.prototype.toString;
-    Function.prototype.toString = function() {
-        const str = _toString.call(this);
-        if (str.includes('webdriver') || str.includes('__AGENT__')) {
-            return _toString.call(() => {});
-        }
-        return str;
-    };
-})();
-        """)
 
         self.page = await context.new_page()
     
