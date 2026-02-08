@@ -28,6 +28,67 @@ except ImportError:
     sys.exit(1)
 
 
+class Style:
+    """极简 ANSI 样式工具"""
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    DIM = '\033[2m'
+    
+    # 前景色
+    BLACK = '\033[30m'
+    RED = '\033[31m'
+    GREEN = '\033[32m'
+    YELLOW = '\033[33m'
+    BLUE = '\033[34m'
+    MAGENTA = '\033[35m'
+    CYAN = '\033[36m'
+    WHITE = '\033[37m'
+    
+    # 背景色
+    BG_BLACK = '\033[40m'
+    BG_RED = '\033[41m'
+    BG_GREEN = '\033[42m'
+    BG_YELLOW = '\033[43m'
+    BG_BLUE = '\033[44m'
+    BG_MAGENTA = '\033[45m'
+    BG_CYAN = '\033[46m'
+    BG_WHITE = '\033[47m'
+    
+    @classmethod
+    def text(cls, s: str, *codes: str) -> str:
+        """给文本添加颜色/样式"""
+        if not codes:
+            return s
+        return ''.join(codes) + s + cls.RESET
+    
+    @classmethod
+    def header(cls, s: str, color: str = CYAN) -> str:
+        """大标题"""
+        return f"\n{cls.text(s, cls.BOLD, color)}"
+    
+    @classmethod
+    def label(cls, text: str, color: str = BLUE) -> str:
+        """标签样式，无方括号"""
+        return cls.text(text, cls.BOLD, color)
+    
+    @classmethod
+    def dim(cls, s: str) -> str:
+        return cls.text(s, cls.DIM)
+    
+    @classmethod
+    def step(cls, current: int) -> str:
+        """步骤显示，只显示当前步数"""
+        return f"\n{cls.text('Step', cls.BOLD, cls.BLUE)} {cls.text(str(current), cls.BOLD, cls.WHITE)}"
+    
+    @classmethod
+    def action(cls, action_type: str, details: str = "") -> str:
+        """操作显示"""
+        badge = cls.text(action_type.upper(), cls.BOLD, cls.BLUE)
+        if details:
+            return f"{badge}  {cls.dim(details)}"
+        return badge
+
+
 class Browser4Zero:
 
     def __init__(self):
@@ -97,7 +158,7 @@ class Browser4Zero:
             )
         except Exception:
             # Fallback to chromium if not available
-            print("   ℹ️ Chrome not found, using Chromium (install Chrome for better stealth)")
+            print(f"   {Style.dim('Chrome not found, using Chromium')} (install Chrome for better stealth)")
             self.browser = await self.playwright.chromium.launch(
                 headless=self.headless,
                 args=launch_args
@@ -122,7 +183,7 @@ class Browser4Zero:
     
     async def _on_new_page(self, page):
         """当有新标签页打开时，自动切换到新页面"""
-        print(f"   🆕 新标签页打开，自动切换")
+        print(f"   {Style.label('New Tab', Style.CYAN)} Auto-switched")
         self.page = page
         await page.wait_for_load_state('domcontentloaded')
         await asyncio.sleep(0.5)
@@ -260,7 +321,7 @@ class Browser4Zero:
     
     async def _safe_goto(self, url: str) -> Dict[str, Any]:
         """Go to page"""
-        print(f"   🌐 Go to: {url[:60]}...")
+        print(f"   {Style.label('URL', Style.BLUE)} {Style.dim(url[:100])}...")
         
         try:
             await self.page.goto(url, wait_until='domcontentloaded')
@@ -315,7 +376,7 @@ class Browser4Zero:
                 self.vision_fail_count = 0
             except Exception as e:
                 self.vision_fail_count += 1
-                print(f"   ⚠️ Failed to screenshot ({self.vision_fail_count}/3): {e}")
+                print(f"   {Style.label('Warn', Style.YELLOW)} Screenshot failed ({self.vision_fail_count}/3): {Style.dim(str(e)[:50])}")
         
         # get text
         try:
@@ -558,7 +619,7 @@ class Browser4Zero:
         # Check for duplicate actions.
         if len(self.state_hashes) >= 5:
             if self.state_hashes[-1] == self.state_hashes[-2] == self.state_hashes[-3]:
-                return "⚠️ 警告：连续3步页面状态完全相同！你必须尝试本质不同的操作（换URL、换策略、或用done结束）。如果这是误判（例如操作确实需要重复执行），请忽略并继续执行。"
+                return "LOOP DETECTED: 连续3步页面状态完全相同！你必须尝试本质不同的操作（换URL、换策略、或用done结束）。如果这是误判（例如操作确实需要重复执行），请忽略并继续执行。"
         
         return None
     
@@ -588,7 +649,7 @@ class Browser4Zero:
             if state.get('value'):
                 state_parts.append(f'value="{state["value"][:15]}"')
             if state.get('checked'):
-                state_parts.append('✓')
+                state_parts.append('[x]')
             if state.get('disabled'):
                 state_parts.append('disabled')
             if state_parts:
@@ -673,7 +734,7 @@ class Browser4Zero:
             parts.append(loop_warning)
         
         if state.get('error'):
-            parts.append(f"\n⚠️ {state['error']}")
+            parts.append(f"\n[Error] {state['error']}")
         
         parts.append(f"\n### 元素列表 ({len(state.get('elements', []))}个)")
         parts.append(self._format_elements(state.get('elements', [])))
@@ -722,7 +783,7 @@ class Browser4Zero:
             return data
         
         except json.JSONDecodeError as e:
-            print(f"   ⚠️ JSON Decode Error")
+            print(f"   {Style.label('Error', Style.RED)} JSON Decode Error")
             raise
         except Exception as e:
             raise
@@ -730,14 +791,16 @@ class Browser4Zero:
     async def run(self, task: str, start_url: Optional[str] = None) -> str:
         """Run the task"""
         try:
-            print("🐢 Launching browser...")
+            print(Style.header('Browser4Zero', Style.CYAN))
+            print(f"  {Style.dim('Launching browser...')}")
             await self._launch_browser()
             
             if start_url:
                 result = await self._safe_goto(start_url)
                 print(f"   {result['message']}")
             
-            print(f"\n🎯 Task: {task}\n")
+            # 任务显示
+            print(f"\n{Style.label('Task', Style.MAGENTA)} {task}\n")
             
             # Messages
             messages = [{'role': 'system', 'content': self._build_system_prompt()}]
@@ -745,18 +808,23 @@ class Browser4Zero:
             self.state_hashes = []
             
             for step in range(1, self.max_steps + 1):
-                print(f"─── Step {step} ───")
+                # 步骤显示
+                print(Style.step(step))
                 
                 # Get state
                 state = await self._get_page_state()
-                print(f"📍 {state.get('url', 'N/A')[:60]}")
-                print(f"📊 {len(state.get('elements', []))} Elements")
+                
+                # 状态栏
+                url = state.get('url', 'N/A')[:65]
+                elems = len(state.get('elements', []))
+                print(f"  {Style.label('URL', Style.BLUE)} {url}")
+                print(f"  {Style.label('Elements', Style.GREEN)} {elems}")
                 
                 # Loop detection
                 state_hash = self._compute_state_hash(state)
                 loop_warning = self._detect_loop(state_hash)
                 if loop_warning:
-                    print(f"   {loop_warning}")
+                    print(f"\n  {Style.label('Warning', Style.YELLOW)} {loop_warning}")
                 
                 # Build messages
                 user_msg = self._build_user_message(state, task, step, loop_warning)
@@ -768,11 +836,16 @@ class Browser4Zero:
                     thought = response.get('thought', '')
                     action = response.get('action', {})
                     
-                    print(f"💭 {thought[:80]}")
-                    print(f"▶️  {json.dumps(action, ensure_ascii=False)}")
+                    # 思考
+                    print(f"\n  {Style.label('Think', Style.MAGENTA)} {Style.dim(thought[:70])}")
+                    
+                    # 操作
+                    action_type = action.get('type', 'unknown')
+                    action_json = json.dumps(action, ensure_ascii=False)
+                    print(f"  {Style.action(action_type, action_json)}")
                     
                 except Exception as e:
-                    print(f"❌ Error with LLM: {e}")
+                    print(f"\n  {Style.label('Error', Style.RED)} LLM call failed: {e}")
                     # Append model response AND system note
                     messages.append({'role': 'assistant', 'content': response.get('content', "")})
                     messages.append({'role': 'user', 'content': '错误：你的上一次响应不是合法的 JSON 或缺少 "action" 字段，操作未被执行。请重新输出仅包含合法、符合要求的 JSON 回复，不要附加任何多余文本；若反复失败，请换一种方法完成任务。'})
@@ -782,20 +855,22 @@ class Browser4Zero:
                 
                 result = await self._execute_action(action)
                 
-                result_msg = f"Final result: {result.get('message', 'unknown')}"
-                if not result.get('success'):
-                    result_msg = f"❌ {result_msg}"
-                print(f"   {result_msg}")
+                # 结果显示
+                success = result.get('success', False)
+                status_label = Style.label('OK', Style.GREEN) if success else Style.label('Fail', Style.RED)
+                msg = result.get('message', 'unknown')
+                print(f"  {status_label} {msg}")
                 
+                result_msg = f"Result: {result.get('message', 'unknown')}"
+                if not success:
+                    result_msg = f"Failed: {result_msg}"
                 messages.append({'role': 'user', 'content': result_msg})
                 
                 if result.get('done'):
                     final_result = result.get('result', 'Task completed')
-                    print(f"\n✅ Complete ({step} steps)")
-                    print(f"📝 {final_result}")
+                    print(f"\n{Style.label('Done', Style.GREEN)} Step {step}")
+                    print(f"{final_result}")
                     return final_result
-                
-                print()
             
             return f"Max steps reached ({self.max_steps})"
         
@@ -818,34 +893,37 @@ async def main():
     agent = Browser4Zero()
     
     if args.interactive or not args.task:
-        print("=" * 50)
-        print("Browser For Zero (Open Source)")
-        print("                   HendyTurtle")
-        print("=" * 50)
+        # 欢迎界面
+        print(Style.header('Browser4Zero', Style.CYAN))
+        print(f"  {Style.dim('Lightweight Browser Agent')}")
+        print(f"  {Style.dim('by HendyTurtle')}\n")
+        print(f"  {Style.dim('Commands: q=quit, <task>=what to do')}")
         
         while True:
             try:
-                task = input("\nWhat should we do today? (q to quit): ").strip()
+                prompt = f"\n{Style.label('Input', Style.CYAN)} What to do? "
+                task = input(prompt).strip()
                 if task.lower() in ['q', 'quit', 'exit']:
+                    print(f"\n{Style.dim('Goodbye!')}")
                     break
                 if not task:
                     continue
                 
-                url = input("Start URL (ENTER to skip): ").strip() or None
+                url_prompt = f"{Style.label('Input', Style.CYAN)} Start URL (Enter to skip): "
+                url = input(url_prompt).strip() or None
                 
                 result = await agent.run(task, url)
-                print(f"\nResult: {result}")
                 
             except KeyboardInterrupt:
-                print("\nBye!")
+                print(f"\n\n{Style.dim('Interrupted. Goodbye!')}")
                 break
             except Exception as e:
-                print(f"Something went wrong with browser agent: {e}")
+                print(f"\n{Style.label('Error', Style.RED)} {e}")
                 import traceback
                 traceback.print_exc()
     else:
         result = await agent.run(args.task, args.url)
-        print(f"\nFinal Result: {result}")
+        print(f"\n{Style.label('Result', Style.GREEN)}\n{result}")
 
 
 if __name__ == '__main__':
