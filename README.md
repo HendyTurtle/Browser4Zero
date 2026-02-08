@@ -2,6 +2,8 @@
 
 两个文件实现的浏览器 agent。
 
+<img width="720" alt="Browser4Zero Screenshot" src="https://github.com/user-attachments/assets/544464d8-b344-48e5-afad-6e34383aab7f" />
+
 给 Zero。
 
 它很简单，就是 Playwright 加一个 LLM。
